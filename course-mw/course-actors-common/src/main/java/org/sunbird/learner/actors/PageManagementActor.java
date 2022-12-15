@@ -41,18 +41,9 @@ import scala.concurrent.Promise;
 import java.io.IOException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
-import java.util.Objects;
-import java.util.Set;
 import java.util.stream.Collectors;
-import java.util.TimeZone;
 
 import static org.sunbird.common.models.util.JsonKey.ID;
 
@@ -515,13 +506,14 @@ public class PageManagementActor extends BaseActor {
   private void createPage(Request actorMessage) {
     Map<String, Object> req = actorMessage.getRequest();
     Map<String, Object> pageMap = (Map<String, Object>) req.get(JsonKey.PAGE);
+    String channel = (String) req.get(JsonKey.CHANNEL);
     // object of telemetry event...
     Map<String, Object> targetObject = new HashMap<>();
     List<Map<String, Object>> correlatedObject = new ArrayList<>();
     // default value for orgId
     String orgId = (String) pageMap.get(JsonKey.ORGANISATION_ID);
     if (StringUtils.isNotBlank(orgId)) {
-      validateOrg(orgId);
+      validateOrg(orgId, channel);
     } else {
       pageMap.put(JsonKey.ORGANISATION_ID, "NA");
     }
@@ -804,13 +796,12 @@ public class PageManagementActor extends BaseActor {
     return sections;
   }
 
-  private void validateOrg(String orgId) {
-    Map<String, Object> result = userOrgService.getOrganisationById(orgId);
-    if (MapUtils.isEmpty(result) || !orgId.equals(result.get(ID))) {
+  private void validateOrg(String orgId , String channel) {
+    if (StringUtils.isEmpty(orgId) || !orgId.equals(channel)) {
       throw new ProjectCommonException(
-          ResponseCode.invalidOrgId.getErrorCode(),
-          ResponseCode.invalidOrgId.getErrorMessage(),
-          ResponseCode.CLIENT_ERROR.getResponseCode());
+              ResponseCode.invalidOrgId.getErrorCode(),
+              ResponseCode.invalidOrgId.getErrorMessage(),
+              ResponseCode.CLIENT_ERROR.getResponseCode());
     }
   }
 

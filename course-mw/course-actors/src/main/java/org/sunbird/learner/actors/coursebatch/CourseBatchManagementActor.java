@@ -108,11 +108,12 @@ public class CourseBatchManagementActor extends BaseActor {
     CourseBatch courseBatch = JsonUtil.convert(request, CourseBatch.class);
     courseBatch.setStatus(setCourseBatchStatus(actorMessage.getRequestContext(), (String) request.get(JsonKey.START_DATE)));
     String courseId = (String) request.get(JsonKey.COURSE_ID);
+    String channel = (String) request.get(JsonKey.CHANNEL);
     Map<String, Object> contentDetails = getContentDetails(actorMessage.getRequestContext(),courseId, headers);
     courseBatch.setCreatedDate(ProjectUtil.getTimeStamp());
     if(StringUtils.isBlank(courseBatch.getCreatedBy()))
     	courseBatch.setCreatedBy(requestedBy);
-    validateContentOrg(actorMessage.getRequestContext(), courseBatch.getCreatedFor());
+    validateContentOrg(actorMessage.getRequestContext(), courseBatch.getCreatedFor(), channel);
     validateMentors(courseBatch, (String) actorMessage.getContext().getOrDefault(JsonKey.X_AUTH_TOKEN, ""), actorMessage.getRequestContext());
     courseBatch.setBatchId(courseBatchId);
     Response result = courseBatchDao.create(actorMessage.getRequestContext(), courseBatch);
@@ -184,6 +185,7 @@ public class CourseBatchManagementActor extends BaseActor {
     String requestedBy = (String) actorMessage.getContext().get(JsonKey.REQUESTED_BY);
 
     Map<String, Object> request = actorMessage.getRequest();
+    String channel = (String) request.get(JsonKey.CHANNEL);
     if (Util.isNotNull(request.get(JsonKey.PARTICIPANTS))) {
       ProjectCommonException.throwClientErrorException(
           ResponseCode.invalidRequestParameter,
@@ -196,11 +198,11 @@ public class CourseBatchManagementActor extends BaseActor {
             : (String) request.get(JsonKey.ID);
     CourseBatch oldBatch =
         courseBatchDao.readById((String) request.get(JsonKey.COURSE_ID), batchId, actorMessage.getRequestContext());
-    CourseBatch courseBatch = getUpdateCourseBatch(actorMessage.getRequestContext(), request, oldBatch);
+    CourseBatch courseBatch = getUpdateCourseBatch(actorMessage.getRequestContext(), request, oldBatch, channel);
     courseBatch.setUpdatedDate(ProjectUtil.getTimeStamp());
     Map<String, Object> contentDetails = getContentDetails(actorMessage.getRequestContext(),courseBatch.getCourseId(), headers);
     validateUserPermission(courseBatch, requestedBy);
-    validateContentOrg(actorMessage.getRequestContext(), courseBatch.getCreatedFor());
+    validateContentOrg(actorMessage.getRequestContext(), courseBatch.getCreatedFor(),channel);
     validateMentors(courseBatch, (String) actorMessage.getContext().getOrDefault(JsonKey.X_AUTH_TOKEN, ""), actorMessage.getRequestContext());
     participantsMap = getMentorLists(participantsMap, oldBatch, courseBatch);
     Map<String, Object> courseBatchMap = CourseBatchUtil.cassandraCourseMapping(courseBatch, dateFormat);
@@ -249,7 +251,7 @@ public class CourseBatchManagementActor extends BaseActor {
   }
 
   @SuppressWarnings("unchecked")
-  private CourseBatch getUpdateCourseBatch(RequestContext requestContext, Map<String, Object> request, CourseBatch oldBatch) throws Exception {
+  private CourseBatch getUpdateCourseBatch(RequestContext requestContext, Map<String, Object> request, CourseBatch oldBatch, String channel) throws Exception {
     CourseBatch courseBatch = JsonUtil.deserialize(JsonUtil.serialize(oldBatch), CourseBatch.class);
     courseBatch.setEnrollmentType(
         getEnrollmentType(
@@ -258,7 +260,7 @@ public class CourseBatchManagementActor extends BaseActor {
         getUpdatedCreatedFor(requestContext, 
             (List<String>) request.get(JsonKey.COURSE_CREATED_FOR),
             courseBatch.getEnrollmentType(),
-            courseBatch.getCreatedFor()));
+            courseBatch.getCreatedFor(),channel));
 
     if (request.containsKey(JsonKey.NAME)) courseBatch.setName((String) request.get(JsonKey.NAME));
 
@@ -353,10 +355,10 @@ public class CourseBatchManagementActor extends BaseActor {
   }
 
   private List<String> getUpdatedCreatedFor(
-          RequestContext requestContext, List<String> createdFor, String enrolmentType, List<String> dbValueCreatedFor) {
+          RequestContext requestContext, List<String> createdFor, String enrolmentType, List<String> dbValueCreatedFor, String channel) {
     if (createdFor != null) {
       for (String orgId : createdFor) {
-        if (!dbValueCreatedFor.contains(orgId) && !isOrgValid(requestContext, orgId)) {
+        if (!dbValueCreatedFor.contains(orgId) && !isOrgValid(requestContext, orgId, channel)) {
           throw new ProjectCommonException(
               ResponseCode.invalidOrgId.getErrorCode(),
               ResponseCode.invalidOrgId.getErrorMessage(),
@@ -577,13 +579,12 @@ public class CourseBatchManagementActor extends BaseActor {
     }
   }
 
-  private boolean isOrgValid(RequestContext requestContext, String orgId) {
+  private boolean isOrgValid(RequestContext requestContext, String orgId, String channel) {
 
     try {
-      Map<String, Object> result = userOrgService.getOrganisationById(orgId);
       logger.debug(requestContext, "CourseBatchManagementActor:isOrgValid: orgId = "
-              + (MapUtils.isNotEmpty(result) ? result.get(ID) : null));
-      return ((MapUtils.isNotEmpty(result) && orgId.equals(result.get(ID))));
+              + (StringUtils.isNotEmpty(channel) ? channel : null));
+      return ((StringUtils.isNotEmpty(channel) && orgId.equals(channel)));
     } catch (Exception e) {
       logger.error(requestContext, "Error while fetching OrgID : " + orgId, e);
     }
@@ -608,10 +609,10 @@ public class CourseBatchManagementActor extends BaseActor {
     return (Map<String, Object>)ekStepContent.getOrDefault("content", new HashMap<>());
   }
 
-  private void validateContentOrg(RequestContext requestContext, List<String> createdFor) {
+  private void validateContentOrg(RequestContext requestContext, List<String> createdFor, String channel) {
     if (createdFor != null) {
       for (String orgId : createdFor) {
-        if (!isOrgValid(requestContext, orgId)) {
+        if (!isOrgValid(requestContext, orgId, channel)) {
           throw new ProjectCommonException(
               ResponseCode.invalidOrgId.getErrorCode(),
               ResponseCode.invalidOrgId.getErrorMessage(),
